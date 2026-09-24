@@ -19,6 +19,10 @@ set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 FF="$DIR/ffmpeg"
+# 按主机架构自动选择二进制(x86_64 -> ffmpeg,aarch64 -> ffmpeg-aarch64)
+case "$(uname -m)" in
+    aarch64*|arm64) [ -x "$DIR/ffmpeg-aarch64" ] && FF="$DIR/ffmpeg-aarch64" ;;
+esac
 OUT="${OUT:-./32k}"
 BITRATE="${BITRATE:-32k}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"

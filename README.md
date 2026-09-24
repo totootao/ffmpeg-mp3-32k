@@ -1,14 +1,20 @@
 # 精简版 FFmpeg —— 仅 MP3 降码率(320k → 32k)
 
-一个 **1.9 MB 全静态**的定制 FFmpeg(基于 FFmpeg 7.1.1 + LAME 3.100,`-O3` 编译),
+一对 **全静态** 的定制 FFmpeg(x86_64 1.9 MB / **aarch64 1.7 MB**,基于 FFmpeg 7.1.1 + LAME 3.100,`-O3` 编译),
 通过 `--disable-everything` 裁剪后**只保留 MP3 转码所需组件**,
-用 musl-gcc 静态链接,**零依赖**,可直接在 **Alpine Linux**(及任意 x86_64 Linux)上运行。
+用 musl 静态链接,**零依赖**,可直接在 **Alpine Linux**(x86_64 / ARM64,及任意 Linux)上运行。
+
+| 文件 | 架构 | 适用 |
+|---|---|---|
+| `ffmpeg` | x86_64 | 常见 PC / 服务器 |
+| `ffmpeg-aarch64` | ARM64 | 树莓派 4/5、ARM 云主机、Apple silicon 上的 Linux 虚拟机等 |
 
 ## 快速使用
 
 ```sh
-chmod +x ffmpeg
-./ffmpeg -i input.mp3 -b:a 32k output.mp3
+chmod +x ffmpeg ffmpeg-aarch64
+./ffmpeg -i input.mp3 -b:a 32k output.mp3            # x86_64
+./ffmpeg-aarch64 -i input.mp3 -b:a 32k output.mp3    # ARM64
 
 # 32k 码率下转单声道,听感通常明显更好(可选):
 ./ffmpeg -i input.mp3 -b:a 32k -ac 1 output.mp3
@@ -64,12 +70,22 @@ JOBS=8 OUT=/tmp/out ./mp3-320-to-32.sh ... # 指定并行数与输出目录
   → `./ffmpeg -i test.mp3 -b:a 32k out.mp3` → **117.6 KB,恒定 32 kb/s,44.1 kHz**
 - 因为是全静态 musl 二进制,不依赖目标机的任何库,glibc 发行版(Debian/CentOS 等)同样能运行。
 
+**aarch64(ARM64)验证:**
+
+- `file ffmpeg-aarch64` → `ELF 64-bit ... aarch64, statically linked, stripped`
+- 交叉编译后经 `qemu-aarch64`(Linux aarch64 syscall ABI 层)完整转码验证:30 秒 320 kbps
+  → `-b:a 32k -ac 1` → **120 KB,恒定 32 kb/s、mono 44.1 kHz**,输出与 x86_64 版一致
+- 全静态二进制不读取目标机任何文件(除自身),syscall 层验证通过即等价于可在
+  Alpine ARM64 / Debian ARM64 / Termux proot 等 aarch64 Linux 环境直接运行;
+  附带脚本会按 `uname -m` 自动选择对应二进制。
+
 ## 重新编译
 
 **方式一:Ubuntu/Debian 上交叉编译(本仓库 build.sh,产物与交付二进制一致)**
 
 ```sh
-sh build.sh    # 自动安装 musl-tools,编译 LAME 静态库 + FFmpeg,约几分钟
+sh build.sh                 # x86_64(默认,需 musl-tools)
+ARCH=aarch64 sh build.sh    # aarch64 交叉编译(自动用 musl 源码搭建交叉工具链)
 ```
 
 **方式二:直接在 Alpine 上原生编译**
