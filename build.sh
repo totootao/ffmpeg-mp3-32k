@@ -26,13 +26,13 @@ cd "$SRC_DIR"
 tar xf "ffmpeg-$FFMPEG_VER.tar.xz"
 tar xf "lame-$LAME_VER.tar.gz"
 
-# ---- 1) LAME 静态库(musl) ----
+# ---- 1) LAME 静态库(musl,-O3 性能优化) ----
 cd "$SRC_DIR/lame-$LAME_VER"
 ./configure --prefix="$STAGE" \
     --enable-static --disable-shared \
     --disable-frontend \
     --disable-dependency-tracking \
-    CC=musl-gcc CFLAGS="-Os"
+    CC=musl-gcc CFLAGS="-O3"
 make -j"$(nproc)"
 make install
 
@@ -46,7 +46,6 @@ cd "$SRC_DIR/ffmpeg-$FFMPEG_VER"
     --disable-network --disable-doc --disable-debug \
     --disable-avdevice --disable-swscale --disable-postproc \
     --disable-ffprobe --disable-ffplay \
-    --enable-small \
     --enable-libmp3lame \
     --enable-encoder=libmp3lame \
     --enable-decoder=mp3 --enable-decoder=mp3float \

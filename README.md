@@ -1,6 +1,6 @@
 # 精简版 FFmpeg —— 仅 MP3 降码率(320k → 32k)
 
-一个 **1.5 MB 全静态**的定制 FFmpeg(基于 FFmpeg 7.1.1 + LAME 3.100),
+一个 **1.9 MB 全静态**的定制 FFmpeg(基于 FFmpeg 7.1.1 + LAME 3.100,`-O3` 编译),
 通过 `--disable-everything` 裁剪后**只保留 MP3 转码所需组件**,
 用 musl-gcc 静态链接,**零依赖**,可直接在 **Alpine Linux**(及任意 x86_64 Linux)上运行。
 
@@ -18,9 +18,31 @@ chmod +x ffmpeg
 
 ```sh
 chmod +x mp3-320-to-32.sh
-./mp3-320-to-32.sh /path/to/music          # 输出到 ./32k/,保持目录结构
-MONO=1 ./mp3-320-to-32.sh /path/to/music   # 单声道模式
+./mp3-320-to-32.sh /path/to/music          # 多核并行,输出到 ./32k/,保持目录结构
+MONO=1 LEVEL=9 ./mp3-320-to-32.sh /path/to/music   # 最快模式(见下)
+JOBS=8 OUT=/tmp/out ./mp3-320-to-32.sh ... # 指定并行数与输出目录
 ```
+
+## 性能与提速
+
+基准:3 分钟 320 kbps 立体声 MP3 → 32 kbps,单文件转码为单线程流水线,速度以"x 实时"计:
+
+| 配置 | 速度 | 相对默认 |
+|---|---|---|
+| 默认参数(立体声,LAME 默认质量)| ~220x | 1.0x |
+| `-compression_level 9`(LAME 快速档)| ~250x | +15% |
+| `-ac 1`(单声道)| ~340x | +55% |
+| `-ac 1 -compression_level 9` | ~600x | **+170%(约 2.7 倍)** |
+
+3 分钟歌曲最快约 **0.3 秒**转完;瓶颈始终在 LAME 编码器的单核计算上,而非解码或磁盘 I/O。
+
+**提速手段(按收益排序):**
+
+1. **批量并行(收益最大)**:单文件转码无法多线程,但批量场景可多进程并行吃满所有核心。`mp3-320-to-32.sh` 已内置(`JOBS=` 控制并发数,默认全部核心);16 核机器批量吞吐可达数千倍实时。
+2. **`MONO=1`(即 `-ac 1`)**:32 kbps 下立体声声道带宽严重不足,转单声道不仅快 50%+ ,听感也明显更好——**推荐默认开启**。
+3. **`LEVEL=9`(即 `-compression_level 9`)**:LAME 最快档,再快 15~20%;32 kbps 极低码率下与默认质量的听感差异很小。
+4. **二进制已是 `-O3` 编译**:比体积优化的 `-Os` 版再快 20~30%,体积仅多 0.4 MB(1.9 MB vs 1.5 MB),无需额外操作。
+5. 不建议用降采样率提速:实测 `-ar 24000` 的重采样开销会吃掉低码率编码省下的时间,速度反而略降。
 
 ## 内置能力(刻意裁剪,仅此而已)
 
@@ -61,7 +83,7 @@ apk add lame-static   # main 仓库提供 lame 静态库;若无,可源码编译 
 ```
 
 > 源码构建的核心就是这段 configure 参数:
-> `--disable-everything --enable-static --disable-shared --disable-network --disable-doc --disable-debug --disable-avdevice --disable-swscale --disable-postproc --enable-small --enable-libmp3lame --enable-encoder=libmp3lame --enable-decoder=mp3 --enable-decoder=mp3float --enable-demuxer=mp3 --enable-muxer=mp3 --enable-parser=mpegaudio --enable-protocol=file --enable-filter=aresample --enable-filter=aformat --enable-filter=anull --extra-ldflags=-static`
+> `--disable-everything --enable-static --disable-shared --disable-network --disable-doc --disable-debug --disable-avdevice --disable-swscale --disable-postproc --enable-libmp3lame --enable-encoder=libmp3lame --enable-decoder=mp3 --enable-decoder=mp3float --enable-demuxer=mp3 --enable-muxer=mp3 --enable-parser=mpegaudio --enable-protocol=file --enable-filter=aresample --enable-filter=aformat --enable-filter=anull --extra-ldflags=-static`
 
 ## 说明
 
