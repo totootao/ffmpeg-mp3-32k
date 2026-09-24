@@ -1,11 +1,11 @@
 #!/bin/sh
 # =====================================================================
-# 可复现构建脚本:精简版 FFmpeg(仅 MP3 320k -> 32k 转码,musl 静态链接)
-# 产物:全静态 ffmpeg 二进制,可直接在 Alpine(含 ARM)上运行
+# 可复现构建脚本:精简版 FFmpeg(MP3 320k -> 32k 转码 + WAV/TS 音频容器,
+# musl 静态链接)。产物:全静态 ffmpeg,可直接在 Alpine(x86_64/ARM)运行
 #
 # 用法:
-#   sh build.sh                    # 默认构建本机架构(x86_64)
-#   ARCH=x86_64 sh build.sh        # x86_64(需 musl-tools)
+#   sh build.sh                    # 默认构建 x86_64
+#   ARCH=x86_64 sh build.sh
 #   ARCH=aarch64 sh build.sh       # 交叉编译 aarch64(自动搭建 musl 交叉工具链)
 # =====================================================================
 set -e
@@ -69,6 +69,23 @@ make -j"$(nproc)"
 make install
 
 # ---------------- 2) FFmpeg 最小配置(musl 静态,-O3) ----------------
+# 组件清单:MP3 降码率 + WAV/TS 音频容器
+FF_COMPONENTS="
+    --enable-libmp3lame
+    --enable-encoder=libmp3lame
+    --enable-decoder=mp3 --enable-decoder=mp3float --enable-decoder=mp2
+    --enable-demuxer=mp3 --enable-muxer=mp3
+    --enable-demuxer=wav --enable-muxer=wav
+    --enable-demuxer=mpegts --enable-muxer=mpegts
+    --enable-decoder=aac --enable-decoder=aac_latm
+    --enable-decoder=pcm_s16le --enable-decoder=pcm_s16be --enable-decoder=pcm_u8
+    --enable-decoder=pcm_s24le --enable-decoder=pcm_s32le --enable-decoder=pcm_f32le
+    --enable-encoder=pcm_s16le --enable-encoder=mp2
+    --enable-parser=mpegaudio --enable-parser=aac
+    --enable-protocol=file
+    --enable-filter=aresample --enable-filter=aformat --enable-filter=anull
+"
+
 cd "$SRC_DIR/ffmpeg-$FFMPEG_VER"
 make clean >/dev/null 2>&1 || true
 ./configure \
@@ -79,13 +96,7 @@ make clean >/dev/null 2>&1 || true
     --disable-network --disable-doc --disable-debug \
     --disable-avdevice --disable-swscale --disable-postproc \
     --disable-ffprobe --disable-ffplay \
-    --enable-libmp3lame \
-    --enable-encoder=libmp3lame \
-    --enable-decoder=mp3 --enable-decoder=mp3float \
-    --enable-demuxer=mp3 --enable-muxer=mp3 \
-    --enable-parser=mpegaudio \
-    --enable-protocol=file \
-    --enable-filter=aresample --enable-filter=aformat --enable-filter=anull \
+    $FF_COMPONENTS \
     --extra-cflags="-I$STAGE/include" \
     --extra-ldflags="-L$STAGE/lib -static"
 make -j"$(nproc)"

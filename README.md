@@ -1,7 +1,7 @@
-# 精简版 FFmpeg —— 仅 MP3 降码率(320k → 32k)
+# 精简版 FFmpeg —— MP3 降码率(320k → 32k)+ WAV/TS 音频容器
 
-一对 **全静态** 的定制 FFmpeg(x86_64 1.9 MB / **aarch64 1.7 MB**,基于 FFmpeg 7.1.1 + LAME 3.100,`-O3` 编译),
-通过 `--disable-everything` 裁剪后**只保留 MP3 转码所需组件**,
+一对 **全静态** 的定制 FFmpeg(x86_64 2.5 MB / **aarch64 2.4 MB**,基于 FFmpeg 7.1.1 + LAME 3.100,`-O3` 编译),
+通过 `--disable-everything` 裁剪,**只保留 MP3 转码与 WAV/TS 音频容器所需组件**,
 用 musl 静态链接,**零依赖**,可直接在 **Alpine Linux**(x86_64 / ARM64,及任意 Linux)上运行。
 
 | 文件 | 架构 | 适用 |
@@ -13,8 +13,12 @@
 
 ```sh
 chmod +x ffmpeg ffmpeg-aarch64
-./ffmpeg -i input.mp3 -b:a 32k output.mp3            # x86_64
+./ffmpeg -i input.mp3 -b:a 32k output.mp3            # x86_64,MP3 -> 32k
 ./ffmpeg-aarch64 -i input.mp3 -b:a 32k output.mp3    # ARM64
+
+# WAV(PCM)/ TS(AAC/MP2)同样可以直接转 32k MP3:
+./ffmpeg -i input.wav -b:a 32k output.mp3
+./ffmpeg -i input.ts  -vn -b:a 32k output.mp3        # TS 只取音频
 
 # 32k 码率下转单声道,听感通常明显更好(可选):
 ./ffmpeg -i input.mp3 -b:a 32k -ac 1 output.mp3
@@ -54,14 +58,14 @@ JOBS=8 OUT=/tmp/out ./mp3-320-to-32.sh ... # 指定并行数与输出目录
 
 | 组件 | 内容 |
 |---|---|
-| 解码器 | mp3 / mp3float |
-| 编码器 | libmp3lame(320k→32k 的实际转换由它完成) |
-| 容器 | mp3 demuxer + mp3 muxer(含 ID3/Xing 头) |
+| 解码器 | mp3 / mp3float / mp2、aac / aac_latm(TS 常见)、pcm_s16le/s16be/u8/s24le/s32le/f32le(WAV) |
+| 编码器 | libmp3lame(实际转码核心)、pcm_s16le / mp2 |
+| 容器 | mp3、wav、mpegts(demuxer + muxer) |
 | 协议 | file |
 | 过滤器 | aresample、aformat、anull(CLI 转码管线必需) |
-| 关闭 | 网络、视频、设备、ffprobe/ffplay、其余全部编解码器 |
+| 关闭 | 网络、视频解码、设备、ffprobe/ffplay、其余全部编解码器(mkv/flv 等容器直接拒绝) |
 
-非 MP3 输入(AAC、FLAC、视频等)会直接报 `Invalid data found when processing input`,无法使用。
+TS 里的视频流可被容器识别但无法解码,提取音频时建议加 `-vn`。
 
 ## 兼容性验证结果
 
@@ -78,6 +82,14 @@ JOBS=8 OUT=/tmp/out ./mp3-320-to-32.sh ... # 指定并行数与输出目录
 - 全静态二进制不读取目标机任何文件(除自身),syscall 层验证通过即等价于可在
   Alpine ARM64 / Debian ARM64 / Termux proot 等 aarch64 Linux 环境直接运行;
   附带脚本会按 `uname -m` 自动选择对应二进制。
+
+**WAV/TS 支持(增强版新增,体积 +0.6 MB):**
+
+- WAV(PCM 16/24/32/float/u8)→ MP3 32k:✓(30 秒 5.3 MB WAV → 120 KB)
+- TS(AAC/MP2 音频)→ MP3 32k:✓(`-vn` 提取音频转码);MP3 → TS 封装 copy:✓
+- MP3 32k → WAV(pcm_s16le):✓;mkv / flv 等未加入的容器仍被拒绝
+- aarch64 版经 qemu-aarch64 完成相同用例验证,输出与 x86_64 版一致
+- 同环境对照测试:MP3 转码速度与纯 MP3 版完全一致,新组件零性能影响
 
 ## 重新编译
 
